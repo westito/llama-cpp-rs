@@ -835,11 +835,26 @@ fn main() {
                 // int8 dot-product / matmul kernels (`armv8.2-a+dotprod`,
                 // `armv8.6-a+i8mm`) on capable devices — Q4_K_M is several times
                 // faster with them. Opt-in via the `GGML_CPU_ARM_ARCH` env var so the
-                // default (`armv8-a`) is unchanged; this mirrors the Linux aarch64
-                // path, which already sets `GGML_CPU_ARM_ARCH`.
+                // default (`armv8-a`) is unchanged.
                 println!("cargo:rerun-if-env-changed=GGML_CPU_ARM_ARCH");
                 if let Ok(arch) = std::env::var("GGML_CPU_ARM_ARCH") {
-                    config.define("GGML_CPU_ARM_ARCH", &arch);
+                    // ggml refuses GGML_CPU_ARM_ARCH alongside the
+                    // GGML_CPU_ALL_VARIANTS that `dynamic-backends` turns on:
+                    //     "Cannot use both GGML_CPU_ARM_ARCH and GGML_CPU_ALL_VARIANTS"
+                    // (ggml/src/CMakeLists.txt), so forwarding it would fail the
+                    // configure step. Nothing is lost by dropping it: the Android
+                    // variant list already covers DOTPROD, MATMUL_INT8, SVE and SME,
+                    // and the best match is selected at load time. Warn rather than
+                    // discard silently, since the value was set deliberately.
+                    if cfg!(feature = "dynamic-backends") {
+                        println!(
+                            "cargo:warning=Ignoring GGML_CPU_ARM_ARCH={arch}: the \
+                             `dynamic-backends` feature builds every Android CPU variant \
+                             (DOTPROD, MATMUL_INT8, SVE, SME) and selects one at runtime."
+                        );
+                    } else {
+                        config.define("GGML_CPU_ARM_ARCH", &arch);
+                    }
                 }
             }
             "armeabi-v7a" => {
